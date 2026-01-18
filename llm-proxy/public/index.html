@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Proxy Stream Test</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    #output {
+      white-space: pre-wrap;
+      background: #f4f4f4;
+      padding: 1rem;
+      border-radius: 4px;
+      min-height: 100px;
+      margin-top: 1rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    input {
+      flex: 1;
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>LLM Proxy Stream Test</h1>
+
+  <div class="controls">
+    <input type="text" id="prompt" value="こんにちは！" placeholder="プロンプトを入力">
+    <button id="send">送信</button>
+  </div>
+
+  <div id="output"></div>
+
+  <script type="module">
+    import { hc } from 'https://esm.sh/hono@4.11.4/client'
+
+    const client = hc('/')
+    const output = document.getElementById('output')
+    const sendBtn = document.getElementById('send')
+    const promptInput = document.getElementById('prompt')
+
+    sendBtn.addEventListener('click', async () => {
+      const prompt = promptInput.value
+      if (!prompt) return
+
+      output.textContent = ''
+      sendBtn.disabled = true
+
+      try {
+        const response = await client.v1.completions.stream.$post({
+          json: {
+            prompt: prompt
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          console.log('Raw Chunk:', decoder.decode(value, { stream: true }))
+          const lines = buffer.split('\n')
+          buffer = lines.pop()
+
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed || trimmed === 'data: [DONE]') continue
+
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const json = JSON.parse(trimmed.slice(6))
+                if (json.content) {
+                  output.textContent += json.content
+                }
+                if (json.stop) {
+                  console.log('Stop signal received', json)
+                }
+              } catch (e) {
+                console.error('Parse error:', e, trimmed)
+              }
+            }
+          }
+        }
+
+      } catch (e) {
+        output.textContent += `\nError: ${e.message}`
+      } finally {
+        sendBtn.disabled = false
+      }
+    })
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "local-gen-ai-platform",
+  "workspaces": [
+    "llm-proxy",
+    "chat"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '*' dev"
+  }
+}

@@ -1,0 +1,5 @@
+.*
+!.gitignore
+
+# deps
+node_modules/
